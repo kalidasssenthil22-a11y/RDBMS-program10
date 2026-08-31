@@ -1,0 +1,214 @@
+name: Course Enrollment JOIN Autograding
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  autograding:
+
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: coursedb
+
+        ports:
+          - 3306:3306
+
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+
+      # 1. Checkout repository
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+
+      # 2. Install MySQL client
+      - name: Install MySQL Client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mysql-client
+
+
+      # 3. Wait for MySQL
+      - name: Wait for MySQL
+        run: |
+          until mysqladmin ping \
+            -h 127.0.0.1 \
+            -uroot \
+            -proot \
+            --silent
+          do
+            echo "Waiting for MySQL..."
+            sleep 2
+          done
+
+
+      # 4. Run student's SQL
+      - name: Run Student SQL
+        run: |
+          mysql \
+            -h 127.0.0.1 \
+            -uroot \
+            -proot \
+            coursedb < starter.sql
+
+
+      # 5. Run tests
+      - name: Run Tests
+        run: |
+          mysql \
+            -h 127.0.0.1 \
+            -uroot \
+            -proot \
+            coursedb < test.sql > test_output.txt
+
+
+      # 6. Display test results
+      - name: Display Test Results
+        run: |
+          cat test_output.txt
+
+
+      # 7. Check Course table
+      - name: Check Course Table
+        run: |
+
+          RESULT=$(mysql \
+            -h 127.0.0.1 \
+            -uroot \
+            -proot \
+            coursedb \
+            -N \
+            -e "SELECT COUNT(*) FROM Course;")
+
+          echo "Course records: $RESULT"
+
+          if [ "$RESULT" -ne 3 ]; then
+            echo "❌ Course table test failed"
+            exit 1
+          fi
+
+          echo "✅ Course table test passed"
+
+
+      # 8. Check Enrollment table
+      - name: Check Enrollment Table
+        run: |
+
+          RESULT=$(mysql \
+            -h 127.0.0.1 \
+            -uroot \
+            -proot \
+            coursedb \
+            -N \
+            -e "SELECT COUNT(*) FROM Enrollment;")
+
+          echo "Enrollment records: $RESULT"
+
+          if [ "$RESULT" -ne 4 ]; then
+            echo "❌ Enrollment table test failed"
+            exit 1
+          fi
+
+          echo "✅ Enrollment table test passed"
+
+
+      # 9. Check LEFT JOIN
+      - name: Check LEFT JOIN
+        run: |
+
+          RESULT=$(mysql \
+            -h 127.0.0.1 \
+            -uroot \
+            -proot \
+            coursedb \
+            -N \
+            -e "
+            SELECT COUNT(*)
+            FROM Course
+            LEFT JOIN Enrollment
+            ON Course.CourseID = Enrollment.CourseID;
+            ")
+
+          echo "LEFT JOIN rows: $RESULT"
+
+          if [ "$RESULT" -ne 4 ]; then
+            echo "❌ LEFT JOIN test failed"
+            exit 1
+          fi
+
+          echo "✅ LEFT JOIN test passed"
+
+
+      # 10. Check RIGHT JOIN
+      - name: Check RIGHT JOIN
+        run: |
+
+          RESULT=$(mysql \
+            -h 127.0.0.1 \
+            -uroot \
+            -proot \
+            coursedb \
+            -N \
+            -e "
+            SELECT COUNT(*)
+            FROM Course
+            RIGHT JOIN Enrollment
+            ON Course.CourseID = Enrollment.CourseID;
+            ")
+
+          echo "RIGHT JOIN rows: $RESULT"
+
+          if [ "$RESULT" -ne 4 ]; then
+            echo "❌ RIGHT JOIN test failed"
+            exit 1
+          fi
+
+          echo "✅ RIGHT JOIN test passed"
+
+
+      # 11. Check Course 201
+      - name: Check Database Systems
+        run: |
+
+          RESULT=$(mysql \
+            -h 127.0.0.1 \
+            -uroot \
+            -proot \
+            coursedb \
+            -N \
+            -e "
+            SELECT COUNT(*)
+            FROM Course
+            LEFT JOIN Enrollment
+            ON Course.CourseID = Enrollment.CourseID
+            WHERE Course.CourseID = 201;
+            ")
+
+          if [ "$RESULT" -ne 2 ]; then
+            echo "❌ Database Systems test failed"
+            exit 1
+          fi
+
+          echo "✅ Database Systems test passed"
+
+
+      # 12. Final result
+      - name: Final Result
+        run: |
+
+          echo ""
+          echo "=========================================="
+          echo "🎉 ALL JOIN TESTS PASSED!"
+          echo "=========================================="
